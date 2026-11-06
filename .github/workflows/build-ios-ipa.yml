@@ -1,0 +1,55 @@
+name: Build iPhone IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build for a real iPhone without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/ClimbingFinder.xcodeproj \
+            -scheme ClimbingFinder \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/climbing-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            BUNDLE_ID_PREFIX=com.climbingfinder.personal \
+            build
+
+      - name: Package unsigned IPA for Windows signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/climbing-build/Build/Products/Release-iphoneos/ClimbingFinder.app"
+          test -d "$APP"
+          PACKAGE="$RUNNER_TEMP/climbing-package"
+          mkdir -p "$PACKAGE/Payload" "$GITHUB_WORKSPACE/ipa-output"
+          ditto "$APP" "$PACKAGE/Payload/ClimbingFinder.app"
+          cd "$PACKAGE"
+          /usr/bin/zip -qry "$GITHUB_WORKSPACE/ipa-output/ClimbingFinder-unsigned.ipa" Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClimbingFinder-unsigned-IPA
+          path: ipa-output/ClimbingFinder-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
